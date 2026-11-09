@@ -1,0 +1,58 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-14]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            build/target
+          key: ${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: Install cbindgen (build.sh checks the committed header)
+        run: cargo install cbindgen --locked
+      - name: Format
+        run: cargo fmt --check
+      - name: Clippy
+        run: cargo clippy --release --all-targets --locked -- -D warnings
+      - name: Build, cargo test, then the C test under ASan and UBSan
+        run: SANITIZE=1 ./test.sh
+
+  msrv:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.85
+      - name: cargo test on the oldest supported toolchain
+        run: cargo test --release --locked
+
+  fuzz:
+    # a minute of each target; longer runs are local (README.md)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Fuzz
+        run: |
+          for t in message_decode noise_transport channel_share; do
+            cargo +nightly fuzz run "$t" -- -max_total_time=60 -max_len=8192
+          done
