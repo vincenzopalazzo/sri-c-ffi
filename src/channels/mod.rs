@@ -650,6 +650,65 @@ mod tests {
         }
     }
 
+    // What a decoded OpenMiningChannel or UpdateChannel can carry in
+    // nominal_hash_rate: the crate refuses a rate that is negative or not
+    // finite with a status, and a refused open gives its prefix back to the
+    // allocator.
+    #[test]
+    fn a_hash_rate_that_is_not_one_is_refused() {
+        let easy = [0xffu8; 32];
+        let rates = [
+            (f32::NAN, SV2_SRI_ERR_CH_NOMINAL_HASHRATE),
+            (f32::INFINITY, SV2_SRI_ERR_CH_NOMINAL_HASHRATE),
+            (f32::NEG_INFINITY, SV2_SRI_ERR_CH_NOMINAL_HASHRATE),
+            (-1.0, SV2_SRI_ERR_CH_NOMINAL_HASHRATE),
+            (-0.0, SV2_SRI_ERR_CH_NOMINAL_HASHRATE),
+            (0.0, SV2_SRI_OK),
+            (f32::MAX, SV2_SRI_OK),
+        ];
+        unsafe {
+            // room for two channels: a prefix kept by a refused open would
+            // run the allocator out below
+            let a = sv2_sri_extranonce_allocator_new([0xaa, 0xbb].as_ptr(), 2, 12, 2);
+            for (rate, expected) in rates {
+                let o = Sv2SriChannelOpen {
+                    nominal_hash_rate: rate,
+                    ..open(7, &easy)
+                };
+                let mut status = 99;
+                let ch = sv2_sri_extended_channel_new(a, &o, &mut status);
+                assert_eq!(status, expected, "extended, {rate}");
+                assert_eq!(ch.is_null(), expected != SV2_SRI_OK, "extended, {rate}");
+                sv2_sri_extended_channel_free(ch);
+                let mut status = 99;
+                let ch = sv2_sri_standard_channel_new(a, &o, &mut status);
+                assert_eq!(status, expected, "standard, {rate}");
+                assert_eq!(ch.is_null(), expected != SV2_SRI_OK, "standard, {rate}");
+                sv2_sri_standard_channel_free(ch);
+            }
+            let mut status = 99;
+            let ext = sv2_sri_extended_channel_new(a, &open(7, &easy), &mut status);
+            assert!(!ext.is_null(), "{status}");
+            let std = sv2_sri_standard_channel_new(a, &open(9, &easy), &mut status);
+            assert!(!std.is_null(), "{status}");
+            for (rate, expected) in rates {
+                assert_eq!(
+                    sv2_sri_extended_channel_update(ext, rate, easy.as_ptr()),
+                    expected,
+                    "extended, {rate}"
+                );
+                assert_eq!(
+                    sv2_sri_standard_channel_update(std, rate, easy.as_ptr()),
+                    expected,
+                    "standard, {rate}"
+                );
+            }
+            sv2_sri_extended_channel_free(ext);
+            sv2_sri_standard_channel_free(std);
+            sv2_sri_extranonce_allocator_free(a);
+        }
+    }
+
     #[test]
     fn an_active_job_needs_the_tip_and_starts_no_earlier() {
         let easy = [0xffu8; 32];

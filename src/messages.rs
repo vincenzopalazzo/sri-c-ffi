@@ -1044,7 +1044,9 @@ pub unsafe extern "C" fn sv2_sri_message_decode(
 /// subprotocol crate assigns, then the payload.  Returns the frame length,
 /// `SV2_SRI_ERR_OVERFLOW` when `cap` is too small, or `SV2_SRI_ERR_INVALID`
 /// for a field out of range or a `msg_type` this API has no record for.
-/// Byte fields of `m` are read only during the call.
+/// Out of range includes a `nominal_hash_rate` that is negative or not
+/// finite, which binary_sv2 does not serialize (the decoder still hands
+/// one over as it came).  Byte fields of `m` are read only during the call.
 ///
 /// # Safety
 /// `m` must point at a record whose byte fields are readable, and `out` at
@@ -1339,6 +1341,66 @@ mod tests {
                 }
             }
         }
+    }
+
+    // binary_sv2 refuses to serialize a hash rate that is negative or not
+    // finite, so the encoder has no frame for one.  The decoder hands over
+    // whatever a peer sent: the channel is what refuses it.
+    #[test]
+    fn a_hash_rate_that_is_not_one_does_not_encode() {
+        let open = |rate: f32| Sv2SriMessage {
+            msg_type: SV2_SRI_MSG_OPEN_STANDARD_MINING_CHANNEL,
+            u: Sv2SriMessageUnion {
+                open_standard_mining_channel: Sv2SriOpenStandardMiningChannel {
+                    request_id: 1,
+                    user_identity: bytes(b"worker"),
+                    nominal_hash_rate: rate,
+                    max_target: [0xff; 32],
+                },
+            },
+        };
+        let extended = |rate: f32| Sv2SriMessage {
+            msg_type: SV2_SRI_MSG_OPEN_EXTENDED_MINING_CHANNEL,
+            u: Sv2SriMessageUnion {
+                open_extended_mining_channel: Sv2SriOpenExtendedMiningChannel {
+                    request_id: 1,
+                    user_identity: bytes(b"worker"),
+                    nominal_hash_rate: rate,
+                    max_target: [0xff; 32],
+                    min_extranonce_size: 8,
+                },
+            },
+        };
+        let update = |rate: f32| Sv2SriMessage {
+            msg_type: SV2_SRI_MSG_UPDATE_CHANNEL,
+            u: Sv2SriMessageUnion {
+                update_channel: Sv2SriUpdateChannel {
+                    channel_id: 1,
+                    nominal_hash_rate: rate,
+                    maximum_target: [0xff; 32],
+                },
+            },
+        };
+        let mut out = [0u8; 128];
+        for rate in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, -0.0] {
+            for m in [open(rate), extended(rate), update(rate)] {
+                let n = unsafe { sv2_sri_message_encode(&m, out.as_mut_ptr(), out.len() as u32) };
+                assert_eq!(n, SV2_SRI_ERR_INVALID, "type {:#x}, {rate}", m.msg_type);
+            }
+        }
+        for rate in [0.0, f32::MIN_POSITIVE, 1.0e12, f32::MAX] {
+            for m in [open(rate), extended(rate), update(rate)] {
+                let n = unsafe { sv2_sri_message_encode(&m, out.as_mut_ptr(), out.len() as u32) };
+                assert!(n > 0, "type {:#x}, {rate}: {n}", m.msg_type);
+            }
+        }
+        // on the wire the field follows request_id and the identity
+        let mut frame = encode(&open(1.0e12));
+        let at = H + 4 + 1 + b"worker".len();
+        assert_eq!(frame[at..at + 4], 1.0e12f32.to_le_bytes());
+        frame[at..at + 4].copy_from_slice(&f32::NAN.to_le_bytes());
+        let m = decode(&mut frame).expect("decodes");
+        assert!(unsafe { m.u.open_standard_mining_channel.nominal_hash_rate }.is_nan());
     }
 
     // An unknown protocol must reach the role, so it can answer

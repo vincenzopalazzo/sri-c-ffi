@@ -36,8 +36,9 @@
  *     writes one complete plaintext frame into out: the 6 byte header,
  *     with the message type and the channel_msg bit mining_sv2 or
  *     common_messages_sv2 assigns, then the payload.  Returns the frame
- *     length or SV2_SRI_ERR_OVERFLOW.  Byte fields of m are read only
- *     during the call.
+ *     length, SV2_SRI_ERR_OVERFLOW, or SV2_SRI_ERR_INVALID for a field
+ *     out of range (a nominal_hash_rate that is negative or not finite
+ *     among them).  Byte fields of m are read only during the call.
  *
  *   sv2_sri_message_decode(uint16_t extension_type, uint8_t msg_type,
  *                          uint8_t *payload, uint32_t len, Sv2SriMessage *out)
@@ -983,7 +984,9 @@ int32_t sv2_sri_message_decode(uint16_t extension_type,
 // subprotocol crate assigns, then the payload.  Returns the frame length,
 // `SV2_SRI_ERR_OVERFLOW` when `cap` is too small, or `SV2_SRI_ERR_INVALID`
 // for a field out of range or a `msg_type` this API has no record for.
-// Byte fields of `m` are read only during the call.
+// Out of range includes a `nominal_hash_rate` that is negative or not
+// finite, which binary_sv2 does not serialize (the decoder still hands
+// one over as it came).  Byte fields of `m` are read only during the call.
 //
 // # Safety
 // `m` must point at a record whose byte fields are readable, and `out` at
