@@ -61,7 +61,8 @@ pub unsafe extern "C" fn sv2_sri_authority_pubkey_to_base58(pk: *const u8, out: 
     guard(SV2_SRI_ERR_INTERNAL, || {
         ret((|| {
             // SAFETY: forwarded to the caller
-            let (pk, out) = unsafe { (input(pk, 32)?, output(out as *mut u8, cap)?) };
+            // c_char is i8 on some targets and u8 on others (aarch64 Linux)
+            let (pk, out) = unsafe { (input(pk, 32)?, output(out.cast::<u8>(), cap)?) };
             let pk = XOnlyPublicKey::from_slice(pk).map_err(|_| SV2_SRI_ERR_INVALID)?;
             let text = Secp256k1PublicKey(pk).to_string();
             if text.len() + 1 > out.len() {
