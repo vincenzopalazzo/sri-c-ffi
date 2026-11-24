@@ -142,18 +142,60 @@ and a channel that takes a job and checks shares.
 
 ## Status and open questions
 
-It runs the SV2 server of a DATUM Gateway build, against SRI's own
-Translator Proxy and mining device and against firmware that speaks SV2.
+It runs the SV2 server of a DATUM Gateway on mainnet, pooled to OCEAN. In
+13.7 hours on 23 and 24 November 2026 the pool accepted 2,518 shares and
+rejected none, from two Bitaxes on extended channels and a Braiins OS+
+machine on a standard channel. Before that the same server ran against
+SRI's own Translator Proxy and mining device.
+
+That gateway was built on stratum
+[`7b85f90`](https://github.com/stratum-mining/stratum/commit/7b85f90ca0ae6990a8eab35f00dbc468f83a8145),
+two pull requests before v1.13.0. The crates this repository builds on now
+differ from it in three ways:
+
+- `binary_sv2` no longer serializes a `nominal_hash_rate` that is negative
+  or not finite ([#2436](https://github.com/stratum-mining/stratum/pull/2436)),
+  so `sv2_sri_message_encode()` returns `SV2_SRI_ERR_INVALID` for one;
+- a coinbase the crates build from a template only gets a witness when it
+  has a witness commitment ([#2457](https://github.com/stratum-mining/stratum/pull/2457));
+  the prebuilt jobs of this API are used as given, so nothing changes here;
+- `codec_sv2` 8.1.0 encrypts a frame in place
+  ([#2483](https://github.com/stratum-mining/stratum/pull/2483)), behind the
+  same `encode_transport()`.
+
+The tests, the sanitizer run and the fuzz targets pass on these crates. The
+mainnet run has not been repeated on them yet.
+
+SRI's own bindings are [sv2-uniffi](https://github.com/stratum-mining/sv2-uniffi),
+which has Python and, since May 2026, C++ bindings generated with
+`uniffi-bindgen-cpp`. The C++ ones need C++20, so a C program cannot use
+them. This crate is the C11 counterpart, with the same three modules.
+
 What it does not do yet, and what is still open:
 
-- **Server side only.** No client channels and no records for template
-  distribution, job declaration or the extensions. What a first version
-  should cover is for stratum#2131 to decide.
+- **Server side only.** No client channels, no group channels, and no
+  records for template distribution, job declaration or the extensions.
+  What a first version should cover is for stratum#2131 to decide.
 - **Records shaped by their first user.** The records mirror the structs of
   the C implementation they replaced in DATUM's SV2 server, field for
-  field, and so do the error code values. Happy to change both.
+  field, and so do the error code values. The message records still have
+  the field names from before the spec cleanup, `maximum_target` and
+  `min_ntime`, where `mining_sv2` 13 says `max_target`, `target` and
+  `ntime_start` (the channel records already use the new names). Happy to
+  change all of it.
+- **Frame headers.** stratum#2131 keeps `framing_sv2` out of an FFI. Here a
+  caller reads its own socket, so the 6 byte header is in the API: a plain
+  record and three functions, nothing else of that crate.
 - **Names.** The prefix is `sv2_sri_` and the library `sv2_sri`; a name
   under stratum-mining would probably be different.
+- **Where it lives.** A repository of its own under stratum-mining, as
+  stratum#2131 proposes for a raw FFI, next to sv2-uniffi, or here with SRI
+  only pointing at it. That is SRI's call.
+- **The responder's certificate.** As in `noise_sv2`, a responder signs a
+  new certificate at every handshake.
+  [stratum#2437](https://github.com/stratum-mining/stratum/issues/2437)
+  asks for a pre-issued one, and `sv2_sri_noise_responder_new()` changes
+  with it.
 - **Following the releases.** The records are written against the message
   structs of one release, so a new major version of `mining_sv2` or
   `common_messages_sv2` means updating `src/messages.rs` with it. Nothing
