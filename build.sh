@@ -9,7 +9,7 @@
 #   <prefix>/lib/pkgconfig/sv2_sri.pc
 #
 # Needs cargo (CARGO overrides which one) and network access the first
-# time, to fetch the pinned SRI crates; Cargo.lock pins everything else.
+# time, to fetch the crates; Cargo.lock pins their versions.
 # CARGO_TARGET_DIR is honoured; by default the build goes in <prefix>/target.
 # When cbindgen is installed, the committed header is checked against the
 # sources and the build fails if it is stale.
