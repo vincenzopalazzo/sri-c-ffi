@@ -1,5 +1,11 @@
 # sri-c-ffi
 
+> **Archived.** This crate moved upstream to
+> [stratum-mining/sv2-ffi](https://github.com/stratum-mining/sv2-ffi), proposed
+> there as [stratum-mining/sv2-ffi#1](https://github.com/stratum-mining/sv2-ffi/pull/1)
+> (with the stratum v1.13.0 field names). Follow and contribute there; this
+> repository is kept read-only for its history.
+
 A C API over the [Stratum V2 Reference Implementation](https://github.com/stratum-mining/stratum)
 crates: the Noise handshake and the encrypted transport, the common and
 mining messages, and the server-side mining channels of `channels_sv2`.
